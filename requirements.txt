@@ -1,0 +1,17 @@
+# Python dependencies for Augment Privacy-Protected Extension Builder
+
+# HTTP requests for downloading VSIX
+requests>=2.31.0
+
+# Testing framework
+pytest>=7.4.0
+
+# Path manipulation (built-in, but listed for clarity)
+# pathlib - built-in
+
+# ZIP file handling (built-in)
+# zipfile - built-in
+
+# JSON handling (built-in)
+# json - built-in
+
