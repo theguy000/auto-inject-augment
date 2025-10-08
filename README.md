@@ -1,5 +1,8 @@
 # Augment VSCode Extension - Privacy Protected Auto-Build
 
+[![Build and Release](https://github.com/theguy000/auto-inject-augment/actions/workflows/build-release.yml/badge.svg)](https://github.com/theguy000/auto-inject-augment/actions/workflows/build-release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This repository automatically downloads the latest Augment VSCode extension, injects privacy protection (device fingerprint spoofing), and creates a modified VSIX package.
 
 ## 🎯 What This Does
@@ -8,6 +11,12 @@ This repository automatically downloads the latest Augment VSCode extension, inj
 2. **Injects** device fingerprint spoofing into all HTML webviews
 3. **Packages** a privacy-protected VSIX file
 4. **Releases** automatically on every push to main branch
+
+## 📊 Status
+
+- **Latest Augment Version**: 0.585.0
+- **Build Status**: Check [Actions](https://github.com/theguy000/auto-inject-augment/actions) tab
+- **Latest Release**: [Releases](https://github.com/theguy000/auto-inject-augment/releases)
 
 ## 🔒 Privacy Protection Features
 
@@ -28,16 +37,17 @@ This repository automatically downloads the latest Augment VSCode extension, inj
 
 ## 🚀 Quick Start
 
-### Install Pre-Built Release
+### Option 1: Install Pre-Built Release (Recommended)
 
-1. Go to [Releases](../../releases)
-2. Download `augment-privacy-protected-{version}.vsix`
+1. Go to [Releases](https://github.com/theguy000/auto-inject-augment/releases)
+2. Download the latest `augment-privacy-protected-{version}.vsix`
 3. Install in VSCode:
    ```bash
    code --install-extension augment-privacy-protected-{version}.vsix
    ```
+   Or via VSCode UI: Extensions → `...` menu → Install from VSIX
 
-### Build Locally
+### Option 2: Build Locally
 
 ```bash
 # Clone repository

@@ -163,7 +163,7 @@ class TestDeviceSpooferContent:
     
     def test_contains_spoofing_functions(self, spoofer_content):
         """Test that spoofer contains spoofing functions."""
-        assert 'generateFingerprint' in spoofer_content or 'spoofNavigator' in spoofer_content
+        assert 'NavigatorSpoofer' in spoofer_content or 'applyAll' in spoofer_content
         assert 'Object.defineProperty' in spoofer_content
     
     def test_contains_machine_id_hook(self, spoofer_content):
