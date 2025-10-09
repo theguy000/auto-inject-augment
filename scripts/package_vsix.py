@@ -55,24 +55,27 @@ def package_with_vsce(extension_dir, output_dir, version):
     output_filename = f"augment-privacy-protected-{version}.vsix"
     output_file = output_path / output_filename
     
+    # Convert to absolute path for vsce
+    output_file_absolute = output_file.resolve()
+    
     # Remove existing file
-    if output_file.exists():
-        print(f"Removing existing VSIX: {output_file}")
-        output_file.unlink()
+    if output_file_absolute.exists():
+        print(f"Removing existing VSIX: {output_file_absolute}")
+        output_file_absolute.unlink()
     
     print(f"Packaging extension...")
     print(f"Extension directory: {extension_path}")
-    print(f"Output file: {output_file}")
+    print(f"Output file: {output_file_absolute}")
     print()
     
     try:
-        # Run vsce package command
+        # Run vsce package command with absolute path
         cmd = [
             "vsce",
             "package",
             "--no-dependencies",
             "--out",
-            str(output_file)
+            str(output_file_absolute)
         ]
         
         print(f"Running: {' '.join(cmd)}")
@@ -95,15 +98,15 @@ def package_with_vsce(extension_dir, output_dir, version):
             print(result.stderr)
         
         # Verify file was created
-        if output_file.exists():
-            file_size = output_file.stat().st_size
+        if output_file_absolute.exists():
+            file_size = output_file_absolute.stat().st_size
             file_size_mb = file_size / (1024 * 1024)
             print(f"✓ VSIX created successfully!")
-            print(f"  File: {output_file}")
+            print(f"  File: {output_file_absolute}")
             print(f"  Size: {file_size_mb:.2f} MB")
-            return str(output_file)
+            return str(output_file_absolute)
         else:
-            print(f"✗ VSIX file was not created")
+            print(f"✗ VSIX file was not created at: {output_file_absolute}")
             return None
         
     except subprocess.CalledProcessError as e:
