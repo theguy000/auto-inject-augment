@@ -246,17 +246,26 @@ class TestInjectionIntegrity:
         extension_js = Path("extracted/extension/out/extension.js")
         content = extension_js.read_text(encoding='utf-8')
         
-        # Basic syntax checks
-        # Count opening and closing braces in first 20 lines
-        injection_lines = content.split('\n')[:20]
-        injection_text = '\n'.join(injection_lines)
+        # Basic syntax checks - verify the injection wrapper structure
+        # The injection should be a self-executing function: (function(){ ... })();
+        lines = content.split('\n')
         
-        open_braces = injection_text.count('{')
-        close_braces = injection_text.count('}')
+        # Check that we have the marker
+        assert lines[0] == '// __AUG_INIT', "First line should be injection marker"
         
-        # Should be balanced or close to balanced (within injection block)
-        assert abs(open_braces - close_braces) <= 1, \
-            f"Unbalanced braces in injection: {open_braces} open, {close_braces} close"
+        # Check that second line starts the self-executing function
+        assert lines[1].strip().startswith('(function()'), \
+            "Second line should start self-executing function"
+        
+        # Find the closing of the self-executing function
+        # Should end with })(); within first 10 lines
+        found_closing = False
+        for i in range(1, min(10, len(lines))):
+            if '})();' in lines[i]:
+                found_closing = True
+                break
+        
+        assert found_closing, "Self-executing function closing })(); not found in first 10 lines"
     
     def test_injection_is_compact(self):
         """Test that injection is compact (around 7 lines)."""
