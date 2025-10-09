@@ -130,7 +130,7 @@ class TestDecodedPayload:
     @pytest.fixture
     def extension_js_content(self):
         """Get extension.js content."""
-        path = Path("extracted/extension/extension.js")
+        path = Path("extracted/extension/out/extension.js")
         return path.read_text(encoding='utf-8')
     
     @pytest.fixture
@@ -243,7 +243,7 @@ class TestInjectionIntegrity:
     
     def test_no_syntax_errors_in_injection(self):
         """Test that injection doesn't introduce syntax errors."""
-        extension_js = Path("extracted/extension/extension.js")
+        extension_js = Path("extracted/extension/out/extension.js")
         content = extension_js.read_text(encoding='utf-8')
         
         # Basic syntax checks
@@ -260,7 +260,7 @@ class TestInjectionIntegrity:
     
     def test_injection_is_compact(self):
         """Test that injection is compact (around 7 lines)."""
-        extension_js = Path("extracted/extension/extension.js")
+        extension_js = Path("extracted/extension/out/extension.js")
         content = extension_js.read_text(encoding='utf-8')
         
         lines = content.split('\n')
@@ -282,7 +282,7 @@ class TestInjectionIntegrity:
     
     def test_base64_is_valid(self):
         """Test that Base64 string is valid and can be decoded."""
-        extension_js = Path("extracted/extension/extension.js")
+        extension_js = Path("extracted/extension/out/extension.js")
         content = extension_js.read_text(encoding='utf-8')
         
         match = re.search(r"const cfg = '([A-Za-z0-9+/=]+)';", content)
