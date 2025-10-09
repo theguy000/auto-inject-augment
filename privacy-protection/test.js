@@ -39,6 +39,48 @@
             return result;
         })();
 
+        // Hook VS Code env.sessionId at the source
+        (function() {
+            try {
+                // Try to intercept vscode module loading
+                var originalRequire = require;
+                if (typeof originalRequire === 'function') {
+                    require = function(moduleName) {
+                        var module = originalRequire.apply(this, arguments);
+                        
+                        // Hook vscode module
+                        if (moduleName === 'vscode' && module && module.env) {
+                            var originalEnv = module.env;
+                            var spoofedEnv = {};
+                            
+                            // Copy all properties except sessionId
+                            for (var key in originalEnv) {
+                                if (key !== 'sessionId') {
+                                    spoofedEnv[key] = originalEnv[key];
+                                }
+                            }
+                            
+                            // Override sessionId with our spoofed value
+                            Object.defineProperty(spoofedEnv, 'sessionId', {
+                                get: function() {
+                                    return __AUG_SESSION_ID;
+                                },
+                                enumerable: true,
+                                configurable: false
+                            });
+                            
+                            // Replace env object
+                            module.env = spoofedEnv;
+                        }
+                        
+                        return module;
+                    };
+                }
+            } catch (e) {
+                // Silently fail if hooking doesn't work
+            }
+        })();
+
         var __AUG_FAKE = {
             windowsGuid: (function() {
                 var p = [8, 4, 4, 4, 12],
@@ -102,42 +144,97 @@
                 value.toLowerCase().includes("session");
         }
 
+        // Helper function to replace sessionId in JSON objects recursively
+        function replaceSessionIdInObject(obj) {
+            if (!obj || typeof obj !== 'object') return obj;
+            
+            for (var key in obj) {
+                var value = obj[key];
+                
+                // Check if this is a sessionId field
+                if ((key === 'sessionId' || key === 'session_id' || key.toLowerCase().includes('sessionid')) 
+                    && typeof value === 'string' && isSessionId(value)) {
+                    obj[key] = __AUG_SESSION_ID;
+                } 
+                // Recursively process nested objects and arrays
+                else if (typeof value === 'object' && value !== null) {
+                    if (Array.isArray(value)) {
+                        for (var i = 0; i < value.length; i++) {
+                            if (typeof value[i] === 'object') {
+                                replaceSessionIdInObject(value[i]);
+                            }
+                        }
+                    } else {
+                        replaceSessionIdInObject(value);
+                    }
+                }
+            }
+            return obj;
+        }
+
         function processInterceptedRequest(url, requestData) {
             try {
-                if (typeof url === "string" && url.includes("/chat-stream")) {
-                    var body = requestData.body || requestData.data;
-                    if (!body) return null;
-                    if (typeof body === "string") {
-                        try {
-                            body = JSON.parse(body);
-                        } catch (e) {
-                            return null;
+                var body = requestData.body || requestData.data;
+                if (!body) return null;
+                
+                var bodyObj = body;
+                var wasString = false;
+                
+                // Parse JSON if it's a string
+                if (typeof body === "string") {
+                    wasString = true;
+                    try {
+                        bodyObj = JSON.parse(body);
+                    } catch (e) {
+                        // Not JSON, try string replacement
+                        var modified = body;
+                        // Replace any UUID-like sessionId values in the string
+                        modified = modified.replace(/"sessionId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"/gi, 
+                            function(match, uuid) {
+                                return '"sessionId":"' + __AUG_SESSION_ID + '"';
+                            });
+                        modified = modified.replace(/"session_id"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"/gi, 
+                            function(match, uuid) {
+                                return '"session_id":"' + __AUG_SESSION_ID + '"';
+                            });
+                        return modified !== body ? modified : null;
+                    }
+                }
+                
+                // Handle specific endpoints
+                if (typeof url === "string") {
+                    if (url.includes("/chat-stream")) {
+                        if (bodyObj && typeof bodyObj === "object") {
+                            // Replace sessionId in the entire object
+                            replaceSessionIdInObject(bodyObj);
+                            
+                            // Also strip blobs as before
+                            if (bodyObj.hasOwnProperty("blobs")) {
+                                var originalBlobs = bodyObj.blobs || {};
+                                bodyObj.blobs = {
+                                    checkpoint_id: Object.prototype.hasOwnProperty.call(originalBlobs, "checkpoint_id") ? originalBlobs.checkpoint_id : null,
+                                    added_blobs: [],
+                                    deleted_blobs: []
+                                };
+                            }
+                            
+                            return wasString ? JSON.stringify(bodyObj) : bodyObj;
                         }
-                    }
-                    if (body && typeof body === "object" && body.hasOwnProperty("blobs")) {
-                        var originalBlobs = body.blobs || {};
-                        body.blobs = {
-                            checkpoint_id: Object.prototype.hasOwnProperty.call(originalBlobs, "checkpoint_id") ? originalBlobs.checkpoint_id : null,
-                            added_blobs: [],
-                            deleted_blobs: []
-                        };
-                        return JSON.stringify(body);
-                    }
-                } else if (typeof url === "string" && url.includes("/report-feature-vector")) {
-                    var body = requestData.body || requestData.data;
-                    if (body) {
-                        var bodyStr = typeof body === "string" ? body : JSON.stringify(body);
-                        try {
-                            var parsed = JSON.parse(bodyStr);
-                            if (parsed.feature_vector && typeof parsed.feature_vector === "object") {
+                    } else if (url.includes("/report-feature-vector")) {
+                        if (bodyObj && typeof bodyObj === "object") {
+                            // Replace sessionId
+                            replaceSessionIdInObject(bodyObj);
+                            
+                            // Also randomize feature vector as before
+                            if (bodyObj.feature_vector && typeof bodyObj.feature_vector === "object") {
                                 var newVector = {};
-                                for (var key in parsed.feature_vector) {
-                                    var value = parsed.feature_vector[key];
+                                for (var key in bodyObj.feature_vector) {
+                                    var value = bodyObj.feature_vector[key];
                                     if (typeof value === "string") {
                                         var hashPart = value.includes("#") ? value.split("#")[1] : value;
                                         if (hashPart && /^[0-9a-fA-F]{64}$/.test(hashPart)) {
                                             var randomHex = "";
-                                            for (var i = 0; i < 64; i++) randomHex += "0123456789abcdef" [Math.floor(Math.random() * 16)];
+                                            for (var i = 0; i < 64; i++) randomHex += "0123456789abcdef"[Math.floor(Math.random() * 16)];
                                             if (value.includes("#")) {
                                                 var prefix = value.split("#")[0];
                                                 newVector[key] = prefix + "#" + randomHex;
@@ -151,15 +248,30 @@
                                         newVector[key] = value;
                                     }
                                 }
-                                parsed.feature_vector = newVector;
+                                bodyObj.feature_vector = newVector;
                             }
-                            return JSON.stringify(parsed);
-                        } catch (e) {
-                            return bodyStr;
+                            
+                            return wasString ? JSON.stringify(bodyObj) : bodyObj;
+                        }
+                    } else {
+                        // For all other API endpoints, still replace sessionId
+                        if (bodyObj && typeof bodyObj === "object") {
+                            var originalBody = wasString ? body : JSON.stringify(bodyObj);
+                            replaceSessionIdInObject(bodyObj);
+                            var modifiedBody = wasString ? JSON.stringify(bodyObj) : bodyObj;
+                            
+                            // Only return if something changed
+                            if (wasString && modifiedBody !== originalBody) {
+                                return modifiedBody;
+                            } else if (!wasString) {
+                                return bodyObj;
+                            }
                         }
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Silently fail
+            }
             return null;
         }
 
