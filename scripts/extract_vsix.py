@@ -27,7 +27,7 @@ def extract_vsix(vsix_path, output_dir="extracted"):
     output_path = Path(output_dir)
     
     if not vsix_file.exists():
-        print(f"✗ VSIX file not found: {vsix_path}")
+        print(f"[ERROR] VSIX file not found: {vsix_path}")
         return False
     
     # Remove existing extraction directory
@@ -57,20 +57,20 @@ def extract_vsix(vsix_path, output_dir="extracted"):
             
             print()  # New line after progress
         
-        print(f"✓ Successfully extracted to: {output_path}")
+        print(f"[OK] Successfully extracted to: {output_path}")
         
         # Verify extraction
         extension_dir = output_path / "extension"
         if not extension_dir.exists():
-            print("⚠ Warning: 'extension' directory not found in extracted contents")
+            print("[WARNING] 'extension' directory not found in extracted contents")
         
         return True
         
     except zipfile.BadZipFile:
-        print(f"✗ Error: Invalid VSIX file (not a valid ZIP archive)")
+        print(f"[ERROR] Invalid VSIX file (not a valid ZIP archive)")
         return False
     except Exception as e:
-        print(f"✗ Error extracting VSIX: {e}")
+        print(f"[ERROR] Error extracting VSIX: {e}")
         return False
 
 
@@ -85,18 +85,18 @@ def main():
     download_dir = Path("download")
     
     if not download_dir.exists():
-        print("✗ Download directory not found")
+        print("[ERROR] Download directory not found")
         return 1
     
     # Find VSIX file
     vsix_files = list(download_dir.glob("*.vsix"))
     
     if not vsix_files:
-        print("✗ No VSIX file found in download directory")
+        print("[ERROR] No VSIX file found in download directory")
         return 1
     
     if len(vsix_files) > 1:
-        print(f"⚠ Multiple VSIX files found, using: {vsix_files[0]}")
+        print(f"[WARNING] Multiple VSIX files found, using: {vsix_files[0]}")
     
     vsix_path = vsix_files[0]
     

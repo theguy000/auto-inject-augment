@@ -76,10 +76,12 @@ jobs:
           This release contains the Augment VSCode extension with integrated privacy protection.
           
           ### 🔒 Privacy Features
-          - ✅ Device fingerprint spoofing
-          - ✅ Randomized hardware identifiers (RAM, CPU, Platform)
-          - ✅ Cross-account tracking prevention
-          - ✅ Session-based fingerprint regeneration
+          - Session ID spoofing (UUID v4 randomization)
+          - Device fingerprint spoofing (Machine IDs, UUIDs, serial numbers)
+          - HTTP/HTTPS request interception and modification
+          - System command output spoofing (ioreg, REG, wmic, git)
+          - Telemetry data stripping
+          - Fetch/Axios/XMLHttpRequest interception
           
           ### 📦 Installation
           
@@ -93,17 +95,21 @@ jobs:
           
           ### 🧪 Verification
           
-          Open VSCode Developer Console (`Ctrl+Shift+I`):
-          ```javascript
-          navigator.deviceMemory        // Random value (2-32)
-          navigator.hardwareConcurrency // Random value (2-32)
+          Check the installed extension's `extension.js` file:
+          ```bash
+          # Find extension location
+          code --list-extensions --show-versions | grep augment
+          
+          # Check for injection marker
+          # File should start with: // __AUG_INIT
           ```
           
           ### 📋 What's Modified
           
-          - **12 HTML webview files** injected with privacy protection script
-          - **device-spoofer.js** loaded before any telemetry code
-          - **No original code modified** - safe API interception
+          - **extension/extension.js** - 7 lines injected at the beginning
+          - **Injection marker**: `// __AUG_INIT`
+          - **Base64-encoded payload** with privacy protection code
+          - **Runs before extension loads** - deep integration
           
           ### ⚠️ Important
           

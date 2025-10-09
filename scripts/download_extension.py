@@ -108,7 +108,7 @@ def download_vsix(publisher, extension_name, version, output_dir="download"):
                         progress = (downloaded_size / total_size) * 100
                         print(f"\rProgress: {progress:.1f}% ({downloaded_size}/{total_size} bytes)", end='')
         
-        print(f"\n✓ Successfully downloaded to: {output_file}")
+        print(f"\n[OK] Successfully downloaded to: {output_file}")
         
         # Save version info
         version_info = {
@@ -126,10 +126,10 @@ def download_vsix(publisher, extension_name, version, output_dir="download"):
         return str(output_file)
         
     except requests.exceptions.RequestException as e:
-        print(f"\n✗ Error downloading file: {e}")
+        print(f"\n[ERROR] Error downloading file: {e}")
         return None
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
+        print(f"\n[ERROR] Unexpected error: {e}")
         return None
 
 
@@ -148,7 +148,7 @@ def main():
     version = get_latest_version(publisher, extension_name)
     
     if not version:
-        print("✗ Could not determine latest version")
+        print("[ERROR] Could not determine latest version")
         return 1
     
     print(f"Latest version: {version}")
