@@ -39,10 +39,45 @@
             return result;
         })();
 
-        // Hook VS Code env.sessionId at the source
+        // Hook VS Code env.sessionId at the source - ENHANCED VERSION
         (function() {
             try {
-                // Try to intercept vscode module loading
+                // Clear the module cache for vscode to force re-require
+                if (typeof require.cache !== 'undefined' && require.cache['vscode']) {
+                    delete require.cache['vscode'];
+                }
+                
+                // Hook Module._load to intercept at the lowest level
+                var Module = require('module');
+                if (Module && Module._load) {
+                    var originalLoad = Module._load;
+                    Module._load = function(request, parent, isMain) {
+                        var module = originalLoad.apply(this, arguments);
+                        
+                        // Hook vscode module at load time
+                        if (request === 'vscode' && module && module.env) {
+                            // Use Object.defineProperty to override sessionId getter
+                            if (!module.env.__augmented) {
+                                var originalSessionId = module.env.sessionId;
+                                Object.defineProperty(module.env, 'sessionId', {
+                                    get: function() {
+                                        return __AUG_SESSION_ID;
+                                    },
+                                    set: function(value) {
+                                        // Ignore sets, always return our spoofed value
+                                    },
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                                module.env.__augmented = true;
+                            }
+                        }
+                        
+                        return module;
+                    };
+                }
+                
+                // Also hook require() as a fallback
                 var originalRequire = require;
                 if (typeof originalRequire === 'function') {
                     require = function(moduleName) {
@@ -50,31 +85,29 @@
                         
                         // Hook vscode module
                         if (moduleName === 'vscode' && module && module.env) {
-                            var originalEnv = module.env;
-                            var spoofedEnv = {};
-                            
-                            // Copy all properties except sessionId
-                            for (var key in originalEnv) {
-                                if (key !== 'sessionId') {
-                                    spoofedEnv[key] = originalEnv[key];
-                                }
+                            if (!module.env.__augmented) {
+                                Object.defineProperty(module.env, 'sessionId', {
+                                    get: function() {
+                                        return __AUG_SESSION_ID;
+                                    },
+                                    set: function(value) {
+                                        // Ignore sets
+                                    },
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                                module.env.__augmented = true;
                             }
-                            
-                            // Override sessionId with our spoofed value
-                            Object.defineProperty(spoofedEnv, 'sessionId', {
-                                get: function() {
-                                    return __AUG_SESSION_ID;
-                                },
-                                enumerable: true,
-                                configurable: false
-                            });
-                            
-                            // Replace env object
-                            module.env = spoofedEnv;
                         }
                         
                         return module;
                     };
+                    // Preserve require properties
+                    for (var prop in originalRequire) {
+                        if (originalRequire.hasOwnProperty(prop)) {
+                            require[prop] = originalRequire[prop];
+                        }
+                    }
                 }
             } catch (e) {
                 // Silently fail if hooking doesn't work
@@ -170,6 +203,43 @@
                 }
             }
             return obj;
+        }
+
+        // Helper function to replace sessionId in URL query parameters
+        function replaceSessionIdInUrl(url) {
+            if (!url || typeof url !== 'string') return url;
+            
+            try {
+                // Check if URL has query parameters
+                if (url.indexOf('?') === -1 && url.indexOf('sessionId=') === -1 && url.indexOf('session_id=') === -1) {
+                    return url;
+                }
+                
+                // Replace sessionId in query parameters
+                var modified = url;
+                
+                // Match sessionId=<uuid> or session_id=<uuid> patterns
+                modified = modified.replace(/([?&])(sessionId|session_id)=([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi, 
+                    function(match, prefix, key, uuid) {
+                        if (isSessionId(uuid)) {
+                            return prefix + key + '=' + __AUG_SESSION_ID;
+                        }
+                        return match;
+                    });
+                
+                // Also match 32-character hex sessionIds
+                modified = modified.replace(/([?&])(sessionId|session_id)=([0-9a-f]{32})/gi, 
+                    function(match, prefix, key, uuid) {
+                        if (isSessionId(uuid)) {
+                            return prefix + key + '=' + __AUG_SESSION_ID;
+                        }
+                        return match;
+                    });
+                
+                return modified;
+            } catch (e) {
+                return url;
+            }
         }
 
         function processInterceptedRequest(url, requestData) {
@@ -312,6 +382,14 @@
             if (name === "http" || name === "https") {
                 var originalRequest = module.request;
                 module.request = function(options, callback) {
+                    // Replace sessionId in URL/path before making request
+                    if (options.path) {
+                        options.path = replaceSessionIdInUrl(options.path);
+                    }
+                    if (options.url) {
+                        options.url = replaceSessionIdInUrl(options.url);
+                    }
+                    
                     var url = options.url || (options.protocol + "//" + (options.hostname || options.host) + (options.path || ""));
                     var requestData = {
                         url: url,
@@ -415,6 +493,11 @@
             // Axios interceptor
             if (name === "axios" && module.interceptors && module.interceptors.request) {
                 module.interceptors.request.use(function(config) {
+                    // Replace sessionId in URL
+                    if (config.url) {
+                        config.url = replaceSessionIdInUrl(config.url);
+                    }
+                    
                     var requestData = {
                         url: config.url,
                         method: config.method,
@@ -444,6 +527,9 @@
         if (typeof global !== "undefined" && global.fetch && !global._fetchIntercepted) {
             var originalFetch = global.fetch;
             global.fetch = function(url, options) {
+                // Replace sessionId in URL
+                url = replaceSessionIdInUrl(url);
+                
                 options = options || {};
                 var requestData = {
                     url: url,
@@ -465,7 +551,7 @@
                     }
                     options.headers = headers;
                 }
-                return originalFetch.apply(this, arguments);
+                return originalFetch.call(this, url, options);
             };
             global._fetchIntercepted = true;
         }
@@ -476,6 +562,9 @@
             var originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 
             XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+                // Replace sessionId in URL
+                url = replaceSessionIdInUrl(url);
+                
                 this._interceptedHeaders = {};
                 this._interceptedUrl = url;
                 this._interceptedMethod = method;
@@ -496,7 +585,7 @@
                     return originalSend.call(this, data);
                 };
 
-                return originalOpen.apply(this, arguments);
+                return originalOpen.call(this, method, url, async, user, password);
             };
 
             XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
