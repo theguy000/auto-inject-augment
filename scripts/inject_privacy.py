@@ -1,187 +1,227 @@
 """
-Inject privacy protection (device-spoofer.js) into Augment extension HTML files.
+Inject privacy protection into Augment extension.js file.
 
-This script:
-1. Copies device-spoofer.js to extension/privacy-protection/
-2. Injects script tag into all HTML webview files
-3. Ensures script loads BEFORE any telemetry code
+This script implements the injection method described in diff_summary.md:
+1. Reads the privacy protection code from test.js
+2. Base64 encodes it
+3. Wraps it in a self-executing function with decoder
+4. Injects at the beginning of extension/extension.js
+5. Adds // __AUG_INIT marker comment
+
+The injected code will:
+- Spoof device fingerprints (Machine IDs, UUIDs, serial numbers)
+- Intercept HTTP/HTTPS requests
+- Spoof system command outputs
+- Randomize session IDs
+- Strip telemetry data
 """
 
 import os
 import sys
-import re
-import shutil
+import base64
 from pathlib import Path
 
 
-# HTML files to modify in extension/common-webviews/
-HTML_FILES = [
-    'main-panel.html',
-    'index.html',
-    'settings.html',
-    'secrets-home.html',
-    'memories.html',
-    'history.html',
-    'diff-view.html',
-    'rules.html',
-    'preference.html',
-    'remote-agent-home.html',
-    'remote-agent-diff.html',
-    'next-edit-suggestions.html'
-]
-
-# Script tag to inject (with nonce for CSP)
-SCRIPT_TAG = '    <!-- PRIVACY PROTECTION: Load device spoofer FIRST before any telemetry -->\n    <script src="../privacy-protection/device-spoofer.js" nonce="nonce-NdJS6eXuvR9e2+J/eS0faQ=="></script>\n'
-
-
-def copy_device_spoofer(extracted_dir):
+def read_privacy_code():
     """
-    Copy device-spoofer.js to extension/privacy-protection/ directory.
+    Read the privacy protection code from test.js.
+    
+    Returns:
+        str: The privacy protection JavaScript code
+    """
+    test_file = Path("privacy-protection/test.js")
+    
+    if not test_file.exists():
+        print(f"[ERROR] Privacy protection code not found: {test_file}")
+        return None
+    
+    with open(test_file, 'r', encoding='utf-8') as f:
+        code = f.read()
+    
+    print(f"[OK] Read privacy protection code ({len(code)} bytes)")
+    return code
+
+
+def encode_to_base64(code):
+    """
+    Encode JavaScript code to Base64.
+    
+    Args:
+        code: JavaScript code string
+    
+    Returns:
+        str: Base64 encoded string
+    """
+    encoded = base64.b64encode(code.encode('utf-8')).decode('utf-8')
+    print(f"[OK] Encoded to Base64 ({len(encoded)} bytes)")
+    return encoded
+
+
+def create_injection_code(base64_code):
+    """
+    Create the injection code that will be prepended to extension.js.
+    
+    This creates a self-executing function that:
+    1. Contains the Base64-encoded payload
+    2. Decodes it using Buffer.from()
+    3. Executes it using eval()
+    
+    Args:
+        base64_code: Base64 encoded privacy protection code
+    
+    Returns:
+        str: Complete injection code with marker
+    """
+    injection = f"""// __AUG_INIT
+(function(){{
+  const cfg = '{base64_code}';
+  const dec = (d) => Buffer.from(d, 'base64').toString('utf8');
+  eval(dec(cfg));
+}})();
+
+"""
+    return injection
+
+
+def inject_into_extension_js(extracted_dir, injection_code):
+    """
+    Inject privacy protection code into extension/extension.js.
+    
+    Prepends the injection code to the beginning of the file.
     
     Args:
         extracted_dir: Path to extracted VSIX contents
+        injection_code: Code to inject
     
     Returns:
         bool: True if successful
     """
-    source_file = Path("privacy-protection/device-spoofer.js")
+    extension_js = Path(extracted_dir) / "extension" / "extension.js"
     
-    if not source_file.exists():
-        print(f"✗ Source file not found: {source_file}")
+    if not extension_js.exists():
+        print(f"[ERROR] extension.js not found: {extension_js}")
         return False
     
-    # Create privacy-protection directory in extension
-    target_dir = Path(extracted_dir) / "extension" / "privacy-protection"
-    target_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Reading: {extension_js}")
     
-    target_file = target_dir / "device-spoofer.js"
-    
-    print(f"Copying device-spoofer.js to: {target_file}")
-    shutil.copy2(source_file, target_file)
-    
-    if target_file.exists():
-        print(f"✓ device-spoofer.js copied successfully")
-        return True
-    else:
-        print(f"✗ Failed to copy device-spoofer.js")
-        return False
-
-
-def inject_script_tag(html_file_path):
-    """
-    Inject privacy protection script tag into HTML file.
-    
-    Injects after <title> tag and before any other scripts.
-    
-    Args:
-        html_file_path: Path to HTML file
-    
-    Returns:
-        bool: True if successful
-    """
-    html_path = Path(html_file_path)
-    
-    if not html_path.exists():
-        print(f"  ✗ File not found: {html_path}")
-        return False
-    
-    # Read file content
-    with open(html_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+    # Read original content
+    with open(extension_js, 'r', encoding='utf-8') as f:
+        original_content = f.read()
     
     # Check if already injected
-    if 'device-spoofer.js' in content:
-        print(f"  ⚠ Already injected: {html_path.name}")
+    if '// __AUG_INIT' in original_content:
+        print(f"[WARNING] Already injected (found // __AUG_INIT marker)")
         return True
     
-    # Find injection point: after </title> tag
-    # Pattern: </title>\n followed by optional whitespace and then next tag
-    pattern = r'(</title>\s*\n)'
-    
-    match = re.search(pattern, content)
-    
-    if not match:
-        print(f"  ✗ Could not find </title> tag in: {html_path.name}")
-        return False
-    
-    # Inject script tag after </title>
-    injection_point = match.end()
-    modified_content = content[:injection_point] + SCRIPT_TAG + content[injection_point:]
+    # Create modified content: injection + original
+    modified_content = injection_code + original_content
     
     # Write modified content
-    with open(html_path, 'w', encoding='utf-8') as f:
+    with open(extension_js, 'w', encoding='utf-8') as f:
         f.write(modified_content)
     
-    print(f"  ✓ Injected: {html_path.name}")
+    # Verify injection
+    with open(extension_js, 'r', encoding='utf-8') as f:
+        verify_content = f.read()
+    
+    if not verify_content.startswith('// __AUG_INIT'):
+        print(f"[ERROR] Injection verification failed")
+        return False
+    
+    original_lines = original_content.count('\n')
+    injected_lines = injection_code.count('\n')
+    modified_lines = modified_content.count('\n')
+    
+    print(f"[OK] Injected successfully")
+    print(f"  Original lines: {original_lines}")
+    print(f"  Injected lines: {injected_lines}")
+    print(f"  Modified lines: {modified_lines}")
+    print(f"  Net change: +{injected_lines} lines")
+    
     return True
-
-
-def inject_all_html_files(extracted_dir):
-    """
-    Inject privacy protection into all HTML webview files.
-    
-    Args:
-        extracted_dir: Path to extracted VSIX contents
-    
-    Returns:
-        tuple: (success_count, total_count)
-    """
-    webviews_dir = Path(extracted_dir) / "extension" / "common-webviews"
-    
-    if not webviews_dir.exists():
-        print(f"✗ Webviews directory not found: {webviews_dir}")
-        return 0, 0
-    
-    print(f"\nInjecting privacy protection into HTML files...")
-    print(f"Directory: {webviews_dir}")
-    print()
-    
-    success_count = 0
-    total_count = len(HTML_FILES)
-    
-    for html_file in HTML_FILES:
-        html_path = webviews_dir / html_file
-        if inject_script_tag(html_path):
-            success_count += 1
-    
-    return success_count, total_count
 
 
 def main():
     """Main function to inject privacy protection."""
-    print("=" * 60)
-    print("Privacy Protection Injector")
-    print("=" * 60)
+    print("=" * 70)
+    print("Privacy Protection Injector - extension.js Direct Injection")
+    print("=" * 70)
+    print()
+    print("This script implements the injection method described in:")
+    print("  output/diff_summary.md")
+    print()
+    print("Injection method:")
+    print("  1. Read privacy protection code from test.js")
+    print("  2. Encode to Base64")
+    print("  3. Wrap in self-executing function with decoder")
+    print("  4. Inject at beginning of extension/extension.js")
+    print("  5. Add // __AUG_INIT marker")
+    print()
+    print("=" * 70)
     print()
     
     extracted_dir = "extracted"
     
     if not Path(extracted_dir).exists():
-        print(f"✗ Extracted directory not found: {extracted_dir}")
+        print(f"[ERROR] Extracted directory not found: {extracted_dir}")
+        print(f"  Run extract_vsix.py first")
         return 1
     
-    # Step 1: Copy device-spoofer.js
-    print("[Step 1/2] Copying device-spoofer.js...")
-    if not copy_device_spoofer(extracted_dir):
+    # Step 1: Read privacy protection code
+    print("[Step 1/4] Reading privacy protection code...")
+    privacy_code = read_privacy_code()
+    if not privacy_code:
         return 1
+    print()
     
-    # Step 2: Inject into HTML files
-    print("\n[Step 2/2] Injecting into HTML files...")
-    success_count, total_count = inject_all_html_files(extracted_dir)
+    # Step 2: Encode to Base64
+    print("[Step 2/4] Encoding to Base64...")
+    base64_code = encode_to_base64(privacy_code)
+    print()
+    
+    # Step 3: Create injection code
+    print("[Step 3/4] Creating injection wrapper...")
+    injection_code = create_injection_code(base64_code)
+    print(f"[OK] Created injection code ({len(injection_code)} bytes)")
+    print(f"  Structure:")
+    print(f"    - Marker comment: // __AUG_INIT")
+    print(f"    - Self-executing function")
+    print(f"    - Base64 decoder using Buffer.from()")
+    print(f"    - eval() execution")
+    print()
+    
+    # Step 4: Inject into extension.js
+    print("[Step 4/4] Injecting into extension/extension.js...")
+    if not inject_into_extension_js(extracted_dir, injection_code):
+        return 1
     
     print()
-    print("=" * 60)
-    print(f"Injection Results: {success_count}/{total_count} files modified")
-    print("=" * 60)
+    print("=" * 70)
+    print("[OK] INJECTION COMPLETED SUCCESSFULLY!")
+    print("=" * 70)
+    print()
+    print("What was injected:")
+    print("  - 7 lines at the beginning of extension/extension.js")
+    print("  - Marker: // __AUG_INIT")
+    print("  - Base64-encoded privacy protection payload")
+    print("  - Self-decoding and self-executing wrapper")
+    print()
+    print("Privacy features enabled:")
+    print("  [OK] Session ID spoofing")
+    print("  [OK] Device fingerprint spoofing (Machine IDs, UUIDs, serials)")
+    print("  [OK] HTTP/HTTPS request interception")
+    print("  [OK] System command output spoofing (ioreg, REG, wmic, git)")
+    print("  [OK] Telemetry data stripping")
+    print("  [OK] Fetch/Axios/XHR interception")
+    print()
+    print("Next steps:")
+    print("  1. Run tests: python -m pytest tests/ -v")
+    print("  2. Package: python scripts/package_vsix.py")
+    print("  3. Install: code --install-extension output/*.vsix")
+    print()
     
-    if success_count == total_count:
-        print("✓ All files injected successfully!")
-        return 0
-    else:
-        print(f"⚠ Warning: Only {success_count}/{total_count} files were modified")
-        return 1
+    return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

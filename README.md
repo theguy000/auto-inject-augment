@@ -8,7 +8,7 @@ This repository automatically downloads the latest Augment VSCode extension, inj
 ## 🎯 What This Does
 
 1. **Downloads** the latest Augment extension from VS Marketplace
-2. **Injects** device fingerprint spoofing into all HTML webviews
+2. **Injects** privacy protection code directly into `extension.js`
 3. **Packages** a privacy-protected VSIX file
 4. **Releases** automatically on every push to main branch
 
@@ -22,18 +22,27 @@ This repository automatically downloads the latest Augment VSCode extension, inj
 
 - **Device Fingerprint Spoofing**: Randomizes hardware identifiers
 - **Cross-Account Tracking Prevention**: Different fingerprint per session
-- **Realistic Values**: Generates believable device specs
-- **No Code Modification**: Intercepts at API level (safe & stable)
+- **Session ID Randomization**: Prevents session correlation
+- **Request Interception**: Modifies telemetry data in transit
+- **System Command Spoofing**: Fakes hardware info from OS commands
+- **Deep Integration**: Injected at extension entry point (runs first)
 
 ### What Gets Spoofed
 
-- Machine ID (UUID format)
-- RAM (deviceMemory): 2-32 GB
-- CPU cores (hardwareConcurrency): 2-32 cores
-- Screen resolution: Various realistic sizes
-- Timezone: 12 global options
-- Platform: Win32/MacIntel/Linux
-- Network connection type/speed
+#### Device Identifiers
+- **Machine ID**: Windows GUID, macOS IOPlatformUUID, Linux machine-id
+- **Serial Numbers**: Product ID, IOPlatformSerialNumber
+- **Board ID**: Mac board identifier
+
+#### Session & Network
+- **Session IDs**: UUID v4 format, randomized per session
+- **Request Headers**: `x-request-session-id` header spoofing
+- **Telemetry Data**: Chat blobs, feature vectors
+
+#### System Commands
+- **macOS**: `ioreg` output (IOPlatformUUID, IOPlatformSerialNumber, board-id)
+- **Windows**: `REG.exe`, `wmic`, `systeminfo` output
+- **Git**: Command output suppression
 
 ## 🚀 Quick Start
 
@@ -67,19 +76,34 @@ code --install-extension output/augment-privacy-protected-*.vsix
 
 ## 🧪 Verify Privacy Protection
 
-After installing, open VSCode Developer Console (`Ctrl+Shift+I` or `Cmd+Option+I`):
+After installing, you can verify the injection worked:
 
-```javascript
-// Check spoofed values
-navigator.deviceMemory        // Should show random value (2-32)
-navigator.hardwareConcurrency // Should show random value (2-32)
-navigator.platform            // Should show spoofed platform
+### Check Injection Marker
+Open `extension/extension.js` in the installed extension:
+```bash
+# Find extension location
+code --list-extensions --show-versions | grep augment
 
-// Check Machine ID spoofing
-window.__getSpoofedMachineId() // Should return UUID
+# On Windows
+%USERPROFILE%\.vscode\extensions\augment.vscode-augment-*\extension\extension.js
+
+# On macOS/Linux
+~/.vscode/extensions/augment.vscode-augment-*/extension/extension.js
 ```
 
-Each time you restart VSCode, these values will be different.
+The file should start with:
+```javascript
+// __AUG_INIT
+(function(){
+  const cfg = 'CihmdW5jdGlvbigpIHsK...';
+  // ...
+})();
+```
+
+### Runtime Verification
+The privacy protection runs automatically when the extension loads. Check VSCode's Output panel (View → Output → Augment) for any errors. If the extension loads normally, privacy protection is active.
+
+Each time you restart VSCode, device fingerprints and session IDs will be randomized.
 
 ## 📁 Repository Structure
 
@@ -90,12 +114,19 @@ auto-inject-augment/
 │       └── build-release.yml    # Auto-build on push
 ├── scripts/
 │   ├── download_extension.py    # Downloads latest VSIX
-│   ├── inject_privacy.py        # Injects device-spoofer.js
-│   └── package_vsix.py          # Packages modified extension
+│   ├── extract_vsix.py          # Extracts VSIX contents
+│   ├── inject_privacy.py        # Injects into extension.js
+│   ├── package_vsix.py          # Packages modified extension
+│   └── compare_character_counts.py  # Diff analysis
 ├── privacy-protection/
-│   └── device-spoofer.js        # Privacy protection script
+│   ├── device-spoofer.js        # Privacy protection (readable)
+│   ├── test.js                  # Minified injection payload
+│   └── diff_summary.md          # Quick reference
+├── output/
+│   ├── diff_summary.md          # Detailed technical docs
+│   └── *.vsix                   # Generated packages
 ├── tests/
-│   └── test_injection.py       # Verifies HTML modifications
+│   └── test_injection.py        # Verifies extension.js injection
 ├── build.py                     # Main build orchestrator
 ├── requirements.txt             # Python dependencies
 └── README.md                    # This file
@@ -108,7 +139,7 @@ On every push to `main` branch:
 1. GitHub Actions triggers
 2. Downloads latest Augment extension
 3. Extracts VSIX contents
-4. Injects `device-spoofer.js` into all HTML files
+4. Injects privacy protection into `extension/extension.js`
 5. Runs verification tests
 6. Packages modified VSIX
 7. Creates GitHub Release with artifact
@@ -121,37 +152,44 @@ On every push to `main` branch:
 download_extension.py --publisher augment --extension vscode-augment
 ```
 
-### 2. Injection Phase
+### 2. Extraction Phase
 ```python
-# Injects privacy script into 12 HTML files
-inject_privacy.py --input extracted/ --output modified/
+# Extracts VSIX (ZIP format) to extracted/ directory
+extract_vsix.py
 ```
 
-**Modified Files:**
-- `main-panel.html`
-- `index.html`
-- `settings.html`
-- `secrets-home.html`
-- `memories.html`
-- `history.html`
-- `diff-view.html`
-- `rules.html`
-- `preference.html`
-- `remote-agent-home.html`
-- `remote-agent-diff.html`
-- `next-edit-suggestions.html`
-
-**Injection Point:**
-```html
-<head>
-  <title>Augment</title>
-  <!-- PRIVACY PROTECTION: Load device spoofer FIRST before any telemetry -->
-  <script src="../privacy-protection/device-spoofer.js" nonce="nonce-NdJS6eXuvR9e2+J/eS0faQ=="></script>
-  <!-- Rest of scripts... -->
-</head>
+### 3. Injection Phase
+```python
+# Injects privacy protection into extension.js
+inject_privacy.py
 ```
 
-### 3. Packaging Phase
+**What Gets Injected:**
+
+The script reads `privacy-protection/test.js`, Base64-encodes it, and prepends this to `extension/extension.js`:
+
+```javascript
+// __AUG_INIT
+(function(){
+  const cfg = 'CihmdW5jdGlvbigpIHsKICBmdW5jdGlvbiBfX0FVR192YWxpZGF0ZUNvbmZpZygpIHsK...';
+  const dec = (d) => Buffer.from(d, 'base64').toString('utf8');
+  eval(dec(cfg));
+})();
+
+// Original extension code follows...
+```
+
+**How It Works:**
+1. Self-executing function runs when extension loads
+2. Decodes Base64 payload using `Buffer.from()`
+3. Executes decoded code using `eval()`
+4. Decoded code hooks into Node.js modules (`http`, `https`, `child_process`)
+5. Intercepts and spoofs device identifiers, session IDs, and telemetry
+
+**Modified File:**
+- `extension/extension.js` (+7 lines at the beginning)
+
+### 4. Packaging Phase
 ```bash
 # Uses vsce to create VSIX
 vsce package --no-dependencies --out augment-privacy-protected-{version}.vsix
@@ -161,50 +199,68 @@ vsce package --no-dependencies --out augment-privacy-protected-{version}.vsix
 
 ```bash
 # Run verification tests
-python -m pytest tests/
+python -m pytest tests/ -v
 
 # Tests verify:
-# - device-spoofer.js exists
-# - All 12 HTML files contain injection
-# - Script tag is FIRST (before telemetry)
-# - Correct nonce attribute
+# - extension.js has // __AUG_INIT marker
+# - Injection is at beginning of file
+# - Base64 payload is present and valid
+# - Self-executing function structure is correct
+# - Decoded payload contains all privacy features
 ```
 
 ## 🛠️ Development
 
-### Add New HTML File
+### Modify Privacy Protection Logic
 
-If Augment adds new webview HTML files:
-
-1. Update `inject_privacy.py`:
-   ```python
-   HTML_FILES = [
-       'main-panel.html',
-       'new-file.html',  # Add here
-       # ...
-   ]
-   ```
-
-2. Update `test_injection.py`:
-   ```python
-   def test_all_html_files_modified():
-       expected_files = [
-           'main-panel.html',
-           'new-file.html',  # Add here
-           # ...
-       ]
-   ```
-
-### Modify Spoofing Logic
-
-Edit `privacy-protection/device-spoofer.js`:
+Edit `privacy-protection/test.js` to change the injected code:
 
 ```javascript
-const CONFIG = {
-  DEBUG_MODE: false,  // Set true for logging
-  DEVICE_MEMORY_OPTIONS: [2, 4, 8, 16, 32],
-  // Modify ranges as needed
-};
+// This file contains the actual privacy protection code
+// It gets Base64-encoded and injected into extension.js
+
+function __AUG_validateConfig() {
+  // Validation logic
+}
+
+// Add your custom spoofing logic here
+```
+
+After modifying, rebuild:
+```bash
+python build.py
+```
+
+### Update Validation Expiration
+
+The injection has a time-based validation. To update:
+
+1. Generate new timestamp:
+   ```javascript
+   // JavaScript console
+   Date.now()  // e.g., 1759479478344
+   ```
+
+2. Create config string:
+   ```javascript
+   btoa('active:1759479478344')  // Base64 encode
+   ```
+
+3. Update in `privacy-protection/test.js`:
+   ```javascript
+   function __AUG_validateConfig() {
+     const cfg = "YOUR_NEW_BASE64_STRING";
+     // ...
+   }
+   ```
+
+### Debug Injection
+
+Enable debug mode by modifying the decoded payload to log activity:
+```javascript
+// In test.js, add console.log statements
+console.log('[Privacy] Session ID:', __AUG_SESSION_ID);
+console.log('[Privacy] Fake Machine ID:', __AUG_FAKE.windowsGuid);
 ```
 
 ## 📋 Requirements
@@ -224,18 +280,20 @@ const CONFIG = {
 
 ## 🔐 Security Considerations
 
-- **API Interception**: Spoofing happens at JavaScript API level
-- **No Code Modification**: Original Sentry/telemetry code unchanged
+- **Deep Integration**: Injected at extension entry point (runs before any extension code)
+- **Module Hooking**: Intercepts Node.js core modules (`http`, `https`, `child_process`)
+- **Request Modification**: Alters outgoing requests before they leave
+- **Command Spoofing**: Fakes system command outputs
 - **Session-Based**: New fingerprint per VSCode session
-- **Realistic Values**: Avoids detection via impossible combinations
+- **Base64 Obfuscation**: Payload encoded to avoid casual detection
+- **Time-Based Validation**: Optional expiration mechanism
 
 ## 📚 Technical Details
 
-See [TECHNICAL.md](TECHNICAL.md) for:
-- Detailed spoofing mechanism
-- Sentry SDK analysis
-- Telemetry tracking breakdown
-- Cross-account tracking prevention
+See documentation for detailed information:
+- **[output/diff_summary.md](output/diff_summary.md)**: Complete technical documentation
+- **[privacy-protection/diff_summary.md](privacy-protection/diff_summary.md)**: Quick reference guide
+- **[TECHNICAL.md](TECHNICAL.md)**: Original design rationale (may be outdated)
 
 ## 🤝 Contributing
 
