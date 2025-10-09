@@ -22,7 +22,7 @@ class TestExtensionJsInjection:
     @pytest.fixture
     def extension_js_path(self):
         """Get extension.js file path."""
-        return Path("extracted/extension/extension.js")
+        return Path("extracted/extension/out/extension.js")
     
     @pytest.fixture
     def extension_js_content(self, extension_js_path):

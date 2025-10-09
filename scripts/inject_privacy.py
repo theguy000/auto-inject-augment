@@ -85,7 +85,7 @@ def create_injection_code(base64_code):
 
 def inject_into_extension_js(extracted_dir, injection_code):
     """
-    Inject privacy protection code into extension/extension.js.
+    Inject privacy protection code into extension/out/extension.js.
     
     Prepends the injection code to the beginning of the file.
     
@@ -96,7 +96,7 @@ def inject_into_extension_js(extracted_dir, injection_code):
     Returns:
         bool: True if successful
     """
-    extension_js = Path(extracted_dir) / "extension" / "extension.js"
+    extension_js = Path(extracted_dir) / "extension" / "out" / "extension.js"
     
     if not extension_js.exists():
         print(f"[ERROR] extension.js not found: {extension_js}")
@@ -201,7 +201,7 @@ def main():
     print()
     
     # Step 4: Inject into extension.js
-    print("[Step 4/4] Injecting into extension/extension.js...")
+    print("[Step 4/4] Injecting into extension/out/extension.js...")
     if not inject_into_extension_js(extracted_dir, injection_code):
         return 1
     
