@@ -63,6 +63,20 @@ def extract_vsix(vsix_path, output_dir="extracted"):
         extension_dir = output_path / "extension"
         if not extension_dir.exists():
             print("[WARNING] 'extension' directory not found in extracted contents")
+            print("[DEBUG] Top-level directories found:")
+            for item in output_path.iterdir():
+                if item.is_dir():
+                    print(f"  - {item.name}/")
+        else:
+            print(f"[OK] Found extension directory")
+            extension_js = extension_dir / "extension.js"
+            if extension_js.exists():
+                print(f"[OK] Found extension.js ({extension_js.stat().st_size} bytes)")
+            else:
+                print(f"[WARNING] extension.js not found in extension directory")
+                print("[DEBUG] Files in extension/ directory:")
+                for item in extension_dir.iterdir():
+                    print(f"  - {item.name}")
         
         return True
         

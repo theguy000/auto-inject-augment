@@ -100,6 +100,16 @@ def inject_into_extension_js(extracted_dir, injection_code):
     
     if not extension_js.exists():
         print(f"[ERROR] extension.js not found: {extension_js}")
+        print(f"[DEBUG] Checking extracted directory structure...")
+        extracted_path = Path(extracted_dir)
+        if extracted_path.exists():
+            print(f"[DEBUG] Contents of {extracted_dir}:")
+            for item in extracted_path.iterdir():
+                print(f"  - {item.name}")
+                if item.is_dir() and item.name == "extension":
+                    print(f"[DEBUG] Contents of extension/:")
+                    for subitem in item.iterdir():
+                        print(f"    - {subitem.name}")
         return False
     
     print(f"Reading: {extension_js}")
